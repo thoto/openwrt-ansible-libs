@@ -1,0 +1,518 @@
+#!/usr/bin/env lua
+
+local json = require("json")
+local nixio = require("nixio")
+local socket = require("socket")
+
+
+-- returns first line of command output
+function first_line_cmd(cmd)
+	local fd = io.popen(cmd .. " 2>/dev/null", "r")
+	local out = fd:read("*l")
+	fd:close()
+	return out
+end
+
+-- returns first line of file
+function first_line_file(file)
+	local fd = io.open(file, "r")
+	local out = fd:read("*l")
+	fd:close()
+	return out
+end
+
+-- returns key inside file
+function key_in_file(file, key)
+	local fd = io.open(file, "r")
+	local line=fd:read("*l")
+	local out={}
+	while line do 
+		if line:sub(0,key:len()) == key then
+			table.insert(out,line:sub(key:len()+1))
+		end
+		line=fd:read("*l")
+	end
+	fd:close()
+	return out
+end
+
+-- returns table of options split by whitespaces
+function split_by_space_assoc(file)
+	local out={}
+	for i in io.open(file,"r"):lines() do 
+		for j in i:gmatch("%S+") do 
+			k,v = j:match("(.+)=(.+)")
+			if v then out[k]=v else out[j]=true end
+		end
+	end
+	return out
+end
+
+-- returns table of options split by whitespaces
+function split_by_space(file,n)
+	local out={}
+	for i in io.open(file,"r"):lines() do 
+		for j in i:gmatch("%S+") do 
+			table.insert(out,j)
+		end
+	end
+	if n then return out[n] else return out end
+end
+
+-- returns table of options split by whitespaces
+function split_by_space_cmd(cmd)
+	local out={}
+	for i in io.popen(cmd):lines() do 
+		local lout={}
+		for j in i:gmatch("%S+") do 
+			table.insert(lout,j)
+		end
+		table.insert(out,lout)
+	end
+	return out
+end
+
+
+
+--function get_ifstate() 
+--	if not(nixio.fs.stat("/usr/sbin/ip")) then
+--		return nil
+--	else
+--		local ifaces={}
+--		local i
+--		for line in io.popen("/usr/sbin/ip -oneline address"):lines() do
+--			local a={}
+--			local iface={}
+--			local cat
+--			-- need to remove \\ because its contained in oneline-view
+--			for j in (line:gsub("\\","")):gmatch("%S+") do 
+--				table.insert(a,j)
+--			end
+--			d(a)
+--			for j=1,(table.maxn(a)) do 
+--				if a[j]=="scope" then 
+--					iface["scope"]=a[j+1]
+--				elseif a[j]=="prefix" then 
+--					iface["prefix"]=a[j+1]
+--				elseif a[j]=="inet6" then 
+--					iface["address"]=a[j+1]
+--					cat="ipv6"
+--				elseif a[j]=="inet" then 
+--					iface["address"]=a[j+1]
+--					cat="ipv4"
+--					-- FIXME: Network, netmask
+--				elseif a[j]=="brd" then 
+--					iface["broadcast"]=a[j+1]
+--				end
+--			end
+--			local tmp={}
+--			if not(cat) then cat="FIXME" end
+--			if not(ifaces[a[2]]) then ifaces[a[2]]={} end
+--			if not(ifaces[a[2]][cat]) then ifaces[a[2]][cat]={} end
+--			table.insert(ifaces[a[2]][cat],iface)
+--		end
+--		return ifaces
+--	end
+--end
+
+function ipv4_apply_mask(address,mask)
+	-- get ipv4 network address (address without host information)
+	local addr_iter=(address):gmatch("([^.]+)")
+	local mask_iter=(mask):gmatch("([^.]+)")
+	local net=""
+	local a; local m
+	for a in addr_iter do
+		m=mask_iter()
+		net=net.."."..nixio.bit.band(a,m)
+	end
+	return net:sub(2)
+end
+
+function ipv6_to_list(address)
+	-- converts ipv6 address into list of numeric blocks
+	local function from_hex(segment)
+		if not segment or segment=="" then return 0
+		else return tonumber("0x"..segment) end
+	end
+
+	local t={{}} -- table of scanned blocks
+	-- t contains two lists: the list of scanned blocks before and 
+	--	after ::-delimiter
+	local p=1 -- list of t to be written to (-> state)
+	for i in (address):gmatch("([^:]*)[:]?") do
+		if not i or i == "" then p=p+1; t[p]={} -- :: delimiter found
+		else table.insert(t[p],from_hex(i)) end
+	end
+
+	-- write both parts into one table (r for result)
+	local r=t[1] 
+	if #t>2 then for i=#t[2],1,-1 do r[9-i]=t[2][#t[2]-i+1] end end
+	return r
+end
+
+function ipv6_to_fullstring(arr)
+	-- get long address string from ipv6 address list returned by ipv6_to_list()
+	-- we need this function to easyly compare ipv6 addresses for equality
+	local arr2={}
+	for k=1,#arr do
+		arr2[k]=string.format("%x",arr[k] or 0)
+	end
+	return table.concat(arr2,":")
+end
+
+function ipv6_to_string(arr)
+	-- get (shortened) network address from list returned by ipv6_to_list()
+	local arr2={}
+	local z=0 -- count since last nonzero
+	local m=0 -- position of max zero count
+	local n=0 -- maximum count of zeros
+	for k=1,#arr do
+		arr2[k]=string.format("%x",arr[k] or 0)
+		if arr2[k]=="0" then -- count zeros in row 
+			z=z+1 
+			if z>=n then m=k; n=z end -- we got most counts
+		else z=0 end -- its no zero: reset counter
+	end
+	if n==0 then return table.concat(arr2,":") -- we got no zeros
+	else  -- concatenate high and low
+		return table.concat(arr2,":",1,m-n) .. "::"..table.concat(arr2,":",m+1)
+	end
+end
+
+function ipv6_apply_mask(address,mask)
+	-- get ipv6 network address (address without host information)
+
+	local function from_hex(segment)
+		if not segment or segment=="" then return 0
+		else return tonumber("0x"..segment) end
+	end
+	local function make_addr(str,num)
+		return str..":"..string.format("%x",num)
+	end
+
+	local a=ipv6_to_list(address)
+	local m=ipv6_to_list(mask)
+	local n={}
+	for i=1,8 do
+		n[i]=nixio.bit.band(a[i] or 0,m[i] or 0)
+	end
+	return ipv6_to_fullstring(n)
+end
+
+function ipv6_scope(address)
+	-- address scope ... should work in most cases
+	local first16=(address):match("^([^:]+):")
+	if not first16 then -- loopback interface has 0x00 in first 16 bit
+		return "host"
+	elseif nixio.bit.bor("0x"..first16, nixio.bit.lshift(1,6)-1) == 0xfe80 then
+		-- first 10 bit ... link local
+		return "link"
+	elseif nixio.bit.bor("0x"..first16, nixio.bit.lshift(1,16-7)-1) == 65023 
+		then return "global" -- ULA
+	else
+		return "global" -- assume its usual global scope
+	end
+end
+
+function iface_default_info (ipversion)
+	-- get default gateway information (to be completed by get_ifstate())
+	local cmd=split_by_space_cmd("ip -"..ipversion.." -o route show default")
+
+	if cmd[1] then
+		local default={}
+		local k,v
+		for k,v in ipairs(cmd[1]) do
+			if v=="via" then
+				default.gateway=cmd[1][k+1]
+			elseif v=="src" then
+				default.address=cmd[1][k+1]
+			elseif v=="dev" then
+				default.interface=cmd[1][k+1]
+			end
+		end
+		return default
+	else return end
+end
+
+function netdev_type(name)
+	-- basic type recognition: does not cover every case
+	local numtype=first_line_file("/sys/class/net/"..name.."/type")
+
+	if numtype == "772" then return "loopback"
+	elseif numtype == "1" then return "ether"
+	elseif numtype == "512" then return "ppp" 
+	else return nil end
+end
+
+
+function get_ifstate()
+	local facts={ansible_interfaces={},ansible_all_ipv6_addresses={},
+		ansible_all_ipv4_addresses={}}
+	addrs=nixio.getifaddrs()
+
+	facts.ansible_default_ipv4=iface_default_info(4)
+	facts.ansible_default_ipv6=iface_default_info(6)
+
+	for _,i in pairs(addrs) do
+		-- create interface in table
+		local iface
+		if facts["ansible_"..i.name] then iface=facts["ansible_"..i.name]
+		else iface={} end
+
+		-- raw ethernet address
+		if i.family=="packet" then
+			iface.macaddress=i.addr
+			-- get additional information
+			iface.mtu=first_line_file("/sys/class/net/" .. i.name ..  "/mtu")
+			iface.type=netdev_type(i.name)
+
+			-- copy to default gateway information
+			if facts.ansible_default_ipv6 and
+				facts.ansible_default_ipv6.interface==i.name then
+				for k,v in pairs(iface) do facts.ansible_default_ipv6[k]=v end
+			end
+
+			if facts.ansible_default_ipv4 and
+				facts.ansible_default_ipv4.interface==i.name then
+				for k,v in pairs(iface) do facts.ansible_default_ipv4[k]=v end
+			end
+
+			-- these are written here to make them not appear in default info
+			iface.active=i.flags.up
+			iface.promisc=i.flags.promisc
+			iface.device=i.name
+
+			table.insert(facts.ansible_interfaces,i.name)
+
+		-- ipv6 address
+		elseif i.family=="inet6" then
+			local ipv6={}
+			ipv6.address=i.addr
+			ipv6.scope=ipv6_scope(i.addr)
+			ipv6.prefix=i.prefix
+
+			-- copy to default gateway information
+			if facts.ansible_default_ipv6 and
+				facts.ansible_default_ipv6.interface==i.name and
+				(ipv6_apply_mask(facts.ansible_default_ipv6.address,i.netmask)
+					== ipv6_apply_mask(ipv6.address,i.netmask)) then
+				-- this is the default network, copy configuration
+				for k,v in pairs(ipv6) do
+					facts.ansible_default_ipv6[k]=v
+				end
+			end
+
+			-- push address to array
+			if not iface.ipv6 then iface.ipv6=ipv6
+			else
+				if iface.ipv6.address then iface.ipv6={iface.ipv6} end
+				table.insert(iface.ipv6,ipv6)
+			end
+
+			-- push to list of all addresses
+			if not i.flags.loopback then 
+				table.insert(facts["ansible_all_ipv6_addresses"],i.addr)
+			end
+		-- ipv4 address
+		elseif i.family=="inet" then
+			local ipv4={}
+			ipv4.address=i.addr
+			ipv4.netmask=i.netmask
+			ipv4.broadcast=i.broadaddr
+			ipv4.network=ipv4_apply_mask(i.addr,i.netmask)
+
+			-- copy to default gateway information
+			if facts.ansible_default_ipv4 and
+				facts.ansible_default_ipv4.interface==i.name and
+				(ipv4_apply_mask(facts.ansible_default_ipv4.gateway,i.netmask)
+					==ipv4.network) then
+				-- this is the default network, copy configuration
+				for k,v in pairs(ipv4) do
+					facts.ansible_default_ipv4[k]=v
+				end
+			end
+
+			-- add address and also handle secondary addresses
+			if not iface.ipv4 then iface.ipv4=ipv4
+			else
+				if not iface.ipv4_secondaries then
+					iface.ipv4_secondaries={} end
+				table.insert(iface.ipv4_secondaries,ipv4)
+			end
+
+			-- push to list of all addresses
+			if not i.flags.loopback then 
+				table.insert(facts["ansible_all_ipv4_addresses"],i.addr)
+			end
+		end
+		facts["ansible_"..i.name]=iface
+	end
+	return facts
+end
+
+
+function get_mounts() 
+	if not(nixio.fs.stat("/bin/mount")) or 
+		not(nixio.fs.stat("/bin/df")) then
+		return nil
+	else
+		local mounts={}
+		local line
+		-- parse mounts
+		for line in io.popen("/bin/mount"):lines() do
+			local fields={}
+			-- split into fields
+			for j in line:gmatch("%S+") do 
+				table.insert(fields,j)
+			end
+			mounts[fields[3]]= {device=fields[1],
+				mount=fields[3],
+				fstype=fields[5],
+				options=(fields[6]):sub(2,-2),
+				size_available=0,
+				size_total=0,}
+		end
+		-- parse df
+		for line in io.popen("/bin/df -P"):lines() do
+			local fields={}
+			-- split into fields
+			for j in line:gmatch("%S+") do 
+				table.insert(fields,j)
+			end
+			if mounts[fields[6]] then
+				mounts[fields[6]].size_available = fields[4]*1024
+				mounts[fields[6]].size_total = fields[2]*1024
+			end
+		end
+		return mounts
+	end
+end
+
+
+-- helper function for debugging
+function d(data)
+	print(json.encode(data))
+end
+
+
+
+-- list of possible package managers ... stolen from ansible setup module
+local PKG_MGRS = {
+    { path = '/usr/bin/yum',         name = 'yum' }, 
+	{ path = '/usr/bin/dnf',         name = 'dnf' }, 
+	{ path = '/usr/bin/apt-get',     name = 'apt' }, 
+	{ path = '/usr/bin/zypper',      name = 'zypper' }, 
+	{ path = '/usr/sbin/urpmi',      name = 'urpmi' }, 
+	{ path = '/usr/bin/pacman',      name = 'pacman' }, 
+	{ path = '/bin/opkg',            name = 'opkg' }, 
+	{ path = '/usr/pkg/bin/pkgin',   name = 'pkgin' }, 
+	{ path = '/opt/local/bin/pkgin', name = 'pkgin' }, 
+	{ path = '/opt/local/bin/port',  name = 'macports' }, 
+	{ path = '/usr/local/bin/brew',  name = 'homebrew' }, 
+	{ path = '/sbin/apk',            name = 'apk' }, 
+	{ path = '/usr/sbin/pkg',        name = 'pkgng' }, 
+	{ path = '/usr/sbin/swlist',     name = 'SD-UX' }, 
+	{ path = '/usr/bin/emerge',      name = 'portage' }, 
+	{ path = '/usr/sbin/pkgadd',     name = 'svr4pkg' }, 
+	{ path = '/usr/bin/pkg',         name = 'pkg' }, 
+	{ path = '/usr/bin/xbps-install',name = 'xbps' }, 
+	{ path = '/usr/local/sbin/pkg',  name = 'pkgng' }, 
+	}
+
+-- guess package manager
+function pkg_mgr ()
+	local i
+	local mgr=""
+	for k,v in pairs(PKG_MGRS) do
+		if nixio.fs.stat(v.path) then
+			mgr=v.name
+		end
+	end
+	return mgr
+end
+
+-- list of possible service managers
+local svc_mgrs = {
+    { path = '/etc/init.d',         name = 'sysvinit' }, 
+    { path = '/sbin/procd',         name = 'procd' }, 
+}
+
+-- guess service manager
+function svc_mgr ()
+	local i
+	local mgr=""
+	for k,v in pairs(svc_mgrs) do
+		if nixio.fs.stat(v.path) then
+			mgr=v.name
+		end
+	end
+	return mgr
+end
+
+-----------
+-- TODO: --
+-----------
+-- ansible_lsb: string
+-- ansible_selinux: {}
+--
+-- ansible_date_time: {...}
+-- ansible_memory_mb: {nocache {}, real {}, swap {}}
+-- ansible_devices: {...}
+-- ansible_distribution_major_version: string 
+-- ansible_os_family: string
+-- ansible_ssh_host_key_{dsa/ecdsa,rsa}_public: string
+
+-- HW
+
+-- ansible_system_vendor: string
+-- ansible_fips ??? 
+-- ansible_form_factor ??? 
+-- ansible_gather_subset ??? 
+-- ansible_processor: string
+-- ansible_processor cores, count, threads_per_core, vcpus: string
+-- ansible_product_name, serial, uuid, version
+-- ansible_userspace_bits
+-- ansible_virtualization_role
+-- ansible_virtualization_type
+
+user=nixio.getpw(nixio.getuid())
+sysinfo=nixio.sysinfo()
+
+local out={ansible_facts = {
+	ansible_architecture = first_line_cmd("/bin/uname -m"),
+	ansible_cmdline = split_by_space_assoc("/proc/cmdline"),
+	ansible_machine = first_line_cmd("/bin/uname -m"),
+	ansible_service_mgr=svc_mgr(),
+	ansible_pkg_mgr=pkg_mgr(),
+	ansible_env=nixio.getenv(),
+	ansible_user_id=user.name,
+	ansible_user_uid=user.uid,
+	ansible_user_gid=user.gid,
+	ansible_user_shell=user.shell,
+	ansible_user_gecos=user.gecos,
+	ansible_user_dir=user.dir,
+	ansible_kernel= first_line_cmd("/bin/uname -r"),
+	ansible_distribution=(key_in_file("/etc/openwrt_release","DISTRIB_ID=")[1]):sub(2,-2) ,
+	ansible_distribution_release=(key_in_file("/etc/openwrt_release","DISTRIB_CODENAME=")[1]):sub(2,-2) ,
+	ansible_distribution_version=(key_in_file("/etc/openwrt_release","DISTRIB_RELEASE=")[1]):sub(2,-2) ,
+	ansible_dns={
+		domain=key_in_file("/etc/resolv.conf","domain ")[-2],
+		nameservers=key_in_file("/etc/resolv.conf","nameserver "),
+		search=key_in_file("/etc/resolv.conf","search "),},
+	ansible_nodename=first_line_cmd("/bin/uname -n"),
+	ansible_hostname=first_line_file("/proc/sys/kernel/hostname"),
+	ansible_domain=first_line_file("/proc/sys/kernel/domainname"),
+	ansible_fqdn=(socket.dns.tohostname(socket.dns.gethostname()) or ""),
+	ansible_mounts=get_mounts(),
+	ansible_uptime_seconds=sysinfo.uptime,
+	ansible_memfree_mb=math.ceil(sysinfo.freeram/1048576),
+	ansible_memtotal_mb=math.ceil(sysinfo.totalram/1048576),
+	ansible_swapfree_mb=math.ceil(sysinfo.freeswap/1048576),
+	ansible_swaptotal_mb=math.ceil(sysinfo.totalswap/1048576),
+	ansible_system=first_line_cmd("/bin/uname -s"),
+	module_setup=true
+}, changed = false}
+
+for k,v in pairs(get_ifstate()) do out.ansible_facts[k]=v end
+
+print(json.encode(out))
