@@ -39,3 +39,9 @@ luac.out
 *.x86_64
 *.hex
 
+# compiled python
+*.pyc
+
+# ansible hosts and playbooks
+hosts
+playbooks

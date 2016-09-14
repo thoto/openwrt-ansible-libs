@@ -26,7 +26,7 @@ function key_in_file(file, key)
 	local fd = io.open(file, "r")
 	local line=fd:read("*l")
 	local out={}
-	while line do 
+	while line do
 		if line:sub(0,key:len()) == key then
 			table.insert(out,line:sub(key:len()+1))
 		end
@@ -39,8 +39,8 @@ end
 -- returns table of options split by whitespaces
 function split_by_space_assoc(file)
 	local out={}
-	for i in io.open(file,"r"):lines() do 
-		for j in i:gmatch("%S+") do 
+	for i in io.open(file,"r"):lines() do
+		for j in i:gmatch("%S+") do
 			k,v = j:match("(.+)=(.+)")
 			if v then out[k]=v else out[j]=true end
 		end
@@ -51,8 +51,8 @@ end
 -- returns table of options split by whitespaces
 function split_by_space(file,n)
 	local out={}
-	for i in io.open(file,"r"):lines() do 
-		for j in i:gmatch("%S+") do 
+	for i in io.open(file,"r"):lines() do
+		for j in i:gmatch("%S+") do
 			table.insert(out,j)
 		end
 	end
@@ -62,58 +62,15 @@ end
 -- returns table of options split by whitespaces
 function split_by_space_cmd(cmd)
 	local out={}
-	for i in io.popen(cmd):lines() do 
+	for i in io.popen(cmd):lines() do
 		local lout={}
-		for j in i:gmatch("%S+") do 
+		for j in i:gmatch("%S+") do
 			table.insert(lout,j)
 		end
 		table.insert(out,lout)
 	end
 	return out
 end
-
-
-
---function get_ifstate() 
---	if not(nixio.fs.stat("/usr/sbin/ip")) then
---		return nil
---	else
---		local ifaces={}
---		local i
---		for line in io.popen("/usr/sbin/ip -oneline address"):lines() do
---			local a={}
---			local iface={}
---			local cat
---			-- need to remove \\ because its contained in oneline-view
---			for j in (line:gsub("\\","")):gmatch("%S+") do 
---				table.insert(a,j)
---			end
---			d(a)
---			for j=1,(table.maxn(a)) do 
---				if a[j]=="scope" then 
---					iface["scope"]=a[j+1]
---				elseif a[j]=="prefix" then 
---					iface["prefix"]=a[j+1]
---				elseif a[j]=="inet6" then 
---					iface["address"]=a[j+1]
---					cat="ipv6"
---				elseif a[j]=="inet" then 
---					iface["address"]=a[j+1]
---					cat="ipv4"
---					-- FIXME: Network, netmask
---				elseif a[j]=="brd" then 
---					iface["broadcast"]=a[j+1]
---				end
---			end
---			local tmp={}
---			if not(cat) then cat="FIXME" end
---			if not(ifaces[a[2]]) then ifaces[a[2]]={} end
---			if not(ifaces[a[2]][cat]) then ifaces[a[2]][cat]={} end
---			table.insert(ifaces[a[2]][cat],iface)
---		end
---		return ifaces
---	end
---end
 
 function ipv4_apply_mask(address,mask)
 	-- get ipv4 network address (address without host information)
@@ -136,7 +93,7 @@ function ipv6_to_list(address)
 	end
 
 	local t={{}} -- table of scanned blocks
-	-- t contains two lists: the list of scanned blocks before and 
+	-- t contains two lists: the list of scanned blocks before and
 	--	after ::-delimiter
 	local p=1 -- list of t to be written to (-> state)
 	for i in (address):gmatch("([^:]*)[:]?") do
@@ -145,7 +102,7 @@ function ipv6_to_list(address)
 	end
 
 	-- write both parts into one table (r for result)
-	local r=t[1] 
+	local r=t[1]
 	if #t>2 then for i=#t[2],1,-1 do r[9-i]=t[2][#t[2]-i+1] end end
 	return r
 end
@@ -168,8 +125,8 @@ function ipv6_to_string(arr)
 	local n=0 -- maximum count of zeros
 	for k=1,#arr do
 		arr2[k]=string.format("%x",arr[k] or 0)
-		if arr2[k]=="0" then -- count zeros in row 
-			z=z+1 
+		if arr2[k]=="0" then -- count zeros in row
+			z=z+1
 			if z>=n then m=k; n=z end -- we got most counts
 		else z=0 end -- its no zero: reset counter
 	end
@@ -240,7 +197,7 @@ function netdev_type(name)
 
 	if numtype == "772" then return "loopback"
 	elseif numtype == "1" then return "ether"
-	elseif numtype == "512" then return "ppp" 
+	elseif numtype == "512" then return "ppp"
 	else return nil end
 end
 
@@ -310,7 +267,7 @@ function get_ifstate()
 			end
 
 			-- push to list of all addresses
-			if not i.flags.loopback then 
+			if not i.flags.loopback then
 				table.insert(facts["ansible_all_ipv6_addresses"],i.addr)
 			end
 		-- ipv4 address
@@ -341,7 +298,7 @@ function get_ifstate()
 			end
 
 			-- push to list of all addresses
-			if not i.flags.loopback then 
+			if not i.flags.loopback then
 				table.insert(facts["ansible_all_ipv4_addresses"],i.addr)
 			end
 		end
@@ -351,8 +308,8 @@ function get_ifstate()
 end
 
 
-function get_mounts() 
-	if not(nixio.fs.stat("/bin/mount")) or 
+function get_mounts()
+	if not(nixio.fs.stat("/bin/mount")) or
 		not(nixio.fs.stat("/bin/df")) then
 		return nil
 	else
@@ -362,7 +319,7 @@ function get_mounts()
 		for line in io.popen("/bin/mount"):lines() do
 			local fields={}
 			-- split into fields
-			for j in line:gmatch("%S+") do 
+			for j in line:gmatch("%S+") do
 				table.insert(fields,j)
 			end
 			mounts[fields[3]]= {device=fields[1],
@@ -376,7 +333,7 @@ function get_mounts()
 		for line in io.popen("/bin/df -P"):lines() do
 			local fields={}
 			-- split into fields
-			for j in line:gmatch("%S+") do 
+			for j in line:gmatch("%S+") do
 				table.insert(fields,j)
 			end
 			if mounts[fields[6]] then
@@ -398,25 +355,25 @@ end
 
 -- list of possible package managers ... stolen from ansible setup module
 local PKG_MGRS = {
-    { path = '/usr/bin/yum',         name = 'yum' }, 
-	{ path = '/usr/bin/dnf',         name = 'dnf' }, 
-	{ path = '/usr/bin/apt-get',     name = 'apt' }, 
-	{ path = '/usr/bin/zypper',      name = 'zypper' }, 
-	{ path = '/usr/sbin/urpmi',      name = 'urpmi' }, 
-	{ path = '/usr/bin/pacman',      name = 'pacman' }, 
-	{ path = '/bin/opkg',            name = 'opkg' }, 
-	{ path = '/usr/pkg/bin/pkgin',   name = 'pkgin' }, 
-	{ path = '/opt/local/bin/pkgin', name = 'pkgin' }, 
-	{ path = '/opt/local/bin/port',  name = 'macports' }, 
-	{ path = '/usr/local/bin/brew',  name = 'homebrew' }, 
-	{ path = '/sbin/apk',            name = 'apk' }, 
-	{ path = '/usr/sbin/pkg',        name = 'pkgng' }, 
-	{ path = '/usr/sbin/swlist',     name = 'SD-UX' }, 
-	{ path = '/usr/bin/emerge',      name = 'portage' }, 
-	{ path = '/usr/sbin/pkgadd',     name = 'svr4pkg' }, 
-	{ path = '/usr/bin/pkg',         name = 'pkg' }, 
-	{ path = '/usr/bin/xbps-install',name = 'xbps' }, 
-	{ path = '/usr/local/sbin/pkg',  name = 'pkgng' }, 
+    { path = '/usr/bin/yum',         name = 'yum' },
+	{ path = '/usr/bin/dnf',         name = 'dnf' },
+	{ path = '/usr/bin/apt-get',     name = 'apt' },
+	{ path = '/usr/bin/zypper',      name = 'zypper' },
+	{ path = '/usr/sbin/urpmi',      name = 'urpmi' },
+	{ path = '/usr/bin/pacman',      name = 'pacman' },
+	{ path = '/bin/opkg',            name = 'opkg' },
+	{ path = '/usr/pkg/bin/pkgin',   name = 'pkgin' },
+	{ path = '/opt/local/bin/pkgin', name = 'pkgin' },
+	{ path = '/opt/local/bin/port',  name = 'macports' },
+	{ path = '/usr/local/bin/brew',  name = 'homebrew' },
+	{ path = '/sbin/apk',            name = 'apk' },
+	{ path = '/usr/sbin/pkg',        name = 'pkgng' },
+	{ path = '/usr/sbin/swlist',     name = 'SD-UX' },
+	{ path = '/usr/bin/emerge',      name = 'portage' },
+	{ path = '/usr/sbin/pkgadd',     name = 'svr4pkg' },
+	{ path = '/usr/bin/pkg',         name = 'pkg' },
+	{ path = '/usr/bin/xbps-install',name = 'xbps' },
+	{ path = '/usr/local/sbin/pkg',  name = 'pkgng' },
 	}
 
 -- guess package manager
@@ -433,8 +390,8 @@ end
 
 -- list of possible service managers
 local svc_mgrs = {
-    { path = '/etc/init.d',         name = 'sysvinit' }, 
-    { path = '/sbin/procd',         name = 'procd' }, 
+    { path = '/etc/init.d',         name = 'sysvinit' },
+    { path = '/sbin/procd',         name = 'procd' },
 }
 
 -- guess service manager
@@ -448,32 +405,6 @@ function svc_mgr ()
 	end
 	return mgr
 end
-
------------
--- TODO: --
------------
--- ansible_lsb: string
--- ansible_selinux: {}
---
--- ansible_date_time: {...}
--- ansible_memory_mb: {nocache {}, real {}, swap {}}
--- ansible_devices: {...}
--- ansible_distribution_major_version: string 
--- ansible_os_family: string
--- ansible_ssh_host_key_{dsa/ecdsa,rsa}_public: string
-
--- HW
-
--- ansible_system_vendor: string
--- ansible_fips ??? 
--- ansible_form_factor ??? 
--- ansible_gather_subset ??? 
--- ansible_processor: string
--- ansible_processor cores, count, threads_per_core, vcpus: string
--- ansible_product_name, serial, uuid, version
--- ansible_userspace_bits
--- ansible_virtualization_role
--- ansible_virtualization_type
 
 user=nixio.getpw(nixio.getuid())
 sysinfo=nixio.sysinfo()

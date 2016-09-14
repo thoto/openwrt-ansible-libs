@@ -37,7 +37,7 @@ class ActionModule(ActionBase):
 
         py_version=self._low_level_execute_command("python -V")
 
-        # run lua module if either python is not installed or 
+        # run lua module if either python is not installed or
         # ansible_distribution hostvar is set on host
         if py_version["rc"]!=0 or \
                 ("ansible_distribution" in task_vars \
