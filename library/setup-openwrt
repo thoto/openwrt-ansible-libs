@@ -196,13 +196,28 @@ function netdev_type(name)
 	local numtype=first_line_file("/sys/class/net/"..name.."/type")
 
 	if numtype == "772" then return "loopback"
+	elseif nixio.fs.stat("/sys/class/net/"..name.."/bridge") then
+		return "bridge"
+	elseif nixio.fs.stat("/sys/class/net/"..name.."/bonding") then
+		return "bonding"
 	elseif numtype == "1" then return "ether"
 	elseif numtype == "512" then return "ppp"
 	else return nil end
 end
 
+function bridge_info(name,iface)
+	-- populates bridge specific information in iface for bridge name
+	local i
+	iface["interfaces"]={}
+	for i in nixio.fs.dir("/sys/class/net/"..name.."/brif") do
+		table.insert(iface["interfaces"],i)
+	end
+	iface["id"]=first_line_file("/sys/class/net/"..name.."/bridge/bridge_id")
+	iface["stp"]=first_line_file("/sys/class/net/"..name.."/bridge/stp_state")
+end
 
 function get_ifstate()
+	local i; local k; local v; local j
 	local facts={ansible_interfaces={},ansible_all_ipv6_addresses={},
 		ansible_all_ipv4_addresses={}}
 	addrs=nixio.getifaddrs()
@@ -222,6 +237,7 @@ function get_ifstate()
 			-- get additional information
 			iface.mtu=first_line_file("/sys/class/net/" .. i.name ..  "/mtu")
 			iface.type=netdev_type(i.name)
+			if iface.type=="bridge" then bridge_info(i.name,iface) end
 
 			-- copy to default gateway information
 			if facts.ansible_default_ipv6 and

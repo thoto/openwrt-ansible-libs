@@ -20,7 +20,7 @@
 * `ansible_product_{name,serial,uuid,version}`
 * `ansible_userspace_bits`
 * `ansible_virtualization_{role,type}`
-
+* bonding support for interfaces
 
 ### Missing functionality:
 Implement module options `fact_path`, `filter`, `gather_subset`,
