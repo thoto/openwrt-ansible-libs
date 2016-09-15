@@ -7,11 +7,6 @@ class ActionModule(ActionBase):
         super(ActionModule, self).__init__(task, connection, play_context,\
                 loader, templar, shared_loader_obj)
 
-        self._copyplugin=shared_loader_obj.action_loader.get("copy",\
-                task, connection, play_context, loader, templar,\
-                shared_loader_obj)
-
-
     def run(self, tmp=None, task_vars=None, **kwargs):
         ''' runs standard copy module or custom copy.lua/copy.sh if 
         ansible_distribution is set OpenWRT '''
