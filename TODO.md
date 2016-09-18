@@ -40,11 +40,11 @@ should be a better way to do this.
   `mime=dict(default=False, type='bool', aliases=['mime_type', 'mime-type']),`
 * use `supports_check_mode`
 * add nixio switch for MD5/SHA1:
-
+```
     local fd=io.open(args['path'])
     local file_content=fd:read("*a")
     fd:close()
     local md5=nixio.crypto.hash(md5)
     CryptoHash.update(md5,file_content)
     print(CryptoHash.final(md5)
-
+```
