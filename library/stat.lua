@@ -56,6 +56,7 @@ function make_stat(path,follow)
 				isfifo=(sr["type"]=="fifo"),
 				islnk=(sr["type"]=="lnk"),
 				issock=(sr["type"]=="sock"),
+				lnk_source=((not(follow) and nixio.fs.readlink(path)) or nil),
 				uid=sr["uid"],
 				gid=sr["gid"],
 				gr_name=nixio.getgr(sr["gid"])["name"],

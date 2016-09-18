@@ -1,6 +1,6 @@
 # TODO: bugs, missing features and incompatible parts
 
-## libraries/setup-openwrt
+## library/setup-openwrt
 
 ### Missing variables:
 * `ansible_lsb`
@@ -38,7 +38,6 @@ should be a better way to do this.
 * check for `sha1sum` binary
 * implement MIME checking, check for `file` binary
   `mime=dict(default=False, type='bool', aliases=['mime_type', 'mime-type']),`
-* Implement `lnk_source`
 * use `supports_check_mode`
 * add nixio switch for MD5/SHA1:
 
