@@ -15,10 +15,12 @@ class ActionModule(ActionBase):
 
         result = super(ActionModule, self).run(tmp, task_vars)
 
+        old_pref=self._connection.module_implementation_preferences
         if "ansible_distribution" in task_vars \
                 and task_vars["ansible_distribution"]=='OpenWRT':
-            old_pref=self._connection.module_implementation_preferences
             self._connection.module_implementation_preferences=(".lua",".sh","")
+        else:
+            self._connection.module_implementation_preferences=(".py","")
 
         self._copyplugin=self._shared_loader_obj.action_loader.get("copy",\
                 self._task, self._connection, self._play_context,\
@@ -26,8 +28,6 @@ class ActionModule(ActionBase):
         
         result.update(self._copyplugin.run(tmp,task_vars))
 
-        if "ansible_distribution" in task_vars \
-                and task_vars["ansible_distribution"]=='OpenWRT':
-            self._connection.module_implementation_preferences=old_pref
+        self._connection.module_implementation_preferences=old_pref
 
         return result
