@@ -4,7 +4,11 @@ local nixio=require("nixio")
 local json=require("json")
 
 function die(msg)
-	print(json.encode({failed=true, msg=msg}))
+	if args then
+		print(json.encode({failed=true,invocation={module_args=args},msg=msg}))
+	else
+		print(json.encode({failed=true,msg=msg}))
+	end
 	os.exit(1)
 end
 
@@ -136,4 +140,4 @@ if out['exists']~=false then
 	end
 end
 
-print(json.encode({changed=false,stat=out}))
+print(json.encode({changed=false,invocation={module_args=args},stat=out}))
